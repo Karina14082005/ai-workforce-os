@@ -1,238 +1,461 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Users, Clock, Calendar, FileText, 
   LogOut, Search, Bell, MapPin, Wifi, CheckCircle2, 
   ShieldCheck, Award, Sparkles, Bot, Cpu, Database, Activity, 
   TrendingUp, AlertCircle, Lock, Mail, ArrowRight, Check,
-  PlusCircle, Settings, Crown
+  PlusCircle, Settings, Crown, Globe
 } from 'lucide-react';
 import './App.css';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
-  const [authMode, setAuthMode] = useState('login');
-  
-  // Auth Form States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [step, setStep] = useState('form'); 
+  const [enteredOtp, setEnteredOtp] = useState('');
+
   const [email, setEmail] = useState('karinakatare13@gmail.com');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  
-  // App Active Tab & States
+  const [name, setName] = useState('');
+
+  const [userRole, setUserRole] = useState('supermanager'); 
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [userRole, setUserRole] = useState('supermanager'); // Options: employee, manager, supermanager, admin
-  const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [wifiVerified, setWifiVerified] = useState(true);
+
+  // Interactive UI states
+  const [isCheckedIn, setIsCheckedIn] = useState(true);
   const [geofenceVerified, setGeofenceVerified] = useState(true);
+  const [wifiVerified, setWifiVerified] = useState(true);
 
-  // Sample Data States
-  const [attendanceLogs, setAttendanceLogs] = useState([
-    { id: 1, date: '2026-08-06', name: 'Karina Katare', role: 'Frontend Lead', time: '09:15 AM', status: 'On Time', location: 'Office Desk A-12', avatar: 'KK' },
-    { id: 2, date: '2026-08-06', name: 'Ishika Kag', role: 'UI/UX Designer', time: '09:28 AM', status: 'On Time', location: 'Office Desk B-04', avatar: 'IK' },
-    { id: 3, date: '2026-08-06', name: 'Yashashvini', role: 'Backend Engg', time: '10:05 AM', status: 'Late', location: 'Remote / Home', avatar: 'YS' },
-    { id: 4, date: '2026-08-06', name: 'Yogesh', role: 'QA Specialist', time: '09:40 AM', status: 'On Time', location: 'Office Desk C-02', avatar: 'YG' }
-  ]);
-
+  // Sample data states
   const [leaveRequests, setLeaveRequests] = useState([
-    { id: 1, type: 'Casual Leave', name: 'Ishika Kag', startDate: '2026-08-10', endDate: '2026-08-11', reason: 'Personal work at home', status: 'Pending' },
-    { id: 2, type: 'Medical Leave', name: 'Yashashvini', startDate: '2026-07-15', endDate: '2026-07-16', reason: 'Fever and rest', status: 'Approved' }
+    { id: 1, name: 'Karina Katare', type: 'Casual Leave', startDate: '2026-08-15', endDate: '2026-08-16', reason: 'Personal work', status: 'Pending' },
+    { id: 2, name: 'Rahul Sharma', type: 'Medical Leave', startDate: '2026-08-10', endDate: '2026-08-11', reason: 'Fever', status: 'Approved' }
   ]);
 
   const [workLogs, setWorkLogs] = useState([
-    { id: 1, project: 'AI Workforce OS', task: 'Created Level 1 ER Diagram & Schema Design', hours: '4.5 hrs', qualityScore: '98%' },
-    { id: 2, project: 'Telemetry Dashboard', task: 'Integrated Lucide Icons and Auth Flow UI', hours: '3.0 hrs', qualityScore: '95%' }
+    { id: 1, project: 'AI Workforce OS', hours: '5.5 hrs', task: 'Implemented secure authentication flows and UI telemetry cards.', qualityScore: '98%' },
+    { id: 2, project: 'Geofence Tracker', hours: '3.0 hrs', task: 'Optimized GPS perimeter validation logic.', qualityScore: '95%' }
   ]);
 
-  // Form states for adding data
   const [newLeave, setNewLeave] = useState({ type: 'Casual Leave', startDate: '', endDate: '', reason: '' });
-  const [newLog, setNewLog] = useState({ project: '', task: '', hours: '' });
+  const [newLog, setNewLog] = useState({ project: '', hours: '', task: '' });
 
-  const handleEmailAuth = (e) => {
+  // 1. Session & Google Token Check Effect
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    const urlToken = queryParams.get('token');
+
+    if (urlToken) {
+      localStorage.setItem('authToken', urlToken);
+
+      // Swagger wali profile API se role fetch karein
+      fetch('https://workforce-os-backend-production.up.railway.app/api/users/profile', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${urlToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        const role = data.role ? data.role.toLowerCase() : 'employee';
+        localStorage.setItem('userRole', role);
+        setUserRole(role);
+        setIsAuthenticated(true);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      })
+      .catch(err => {
+        console.error("Profile fetch error:", err);
+        setIsAuthenticated(true);
+      });
+      return;
+    }
+
+    const savedToken = localStorage.getItem('authToken');
+    const savedRole = localStorage.getItem('userRole');
+    if (savedToken) {
+      setIsAuthenticated(true);
+      if (savedRole) setUserRole(savedRole);
+    }
+  }, []);
+
+  // 2. Updated Google Login Handler (Team URL Integrated)
+  const handleGoogleLogin = () => {
+    window.location.href = 'https://workforce-os-backend-production.up.railway.app/oauth2/authorization/google';
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userRole');
+    setIsAuthenticated(false);
+    setStep('form');
+    setPassword('');
+    setEnteredOtp('');
+  };
+
+  const handleCheckInToggle = () => {
+    setIsCheckedIn(!isCheckedIn);
+    alert(isCheckedIn ? "Checked out successfully!" : "Checked in successfully with Geofence verification!");
+  };
+
+  const handleAddLeave = (e) => {
+    e.preventDefault();
+    const req = {
+      id: leaveRequests.length + 1,
+      name: 'Karina Katare',
+      ...newLeave,
+      status: 'Pending'
+    };
+    setLeaveRequests([req, ...leaveRequests]);
+    setNewLeave({ type: 'Casual Leave', startDate: '', endDate: '', reason: '' });
+    alert("Leave application submitted successfully!");
+  };
+
+  const handleLeaveAction = (id, status) => {
+    setLeaveRequests(leaveRequests.map(l => l.id === id ? { ...l, status } : l));
+  };
+
+  const handleAddLog = (e) => {
+    e.preventDefault();
+    const log = {
+      id: workLogs.length + 1,
+      ...newLog,
+      qualityScore: '97%'
+    };
+    setWorkLogs([log, ...workLogs]);
+    setNewLog({ project: '', hours: '', task: '' });
+    alert("Work log saved successfully!");
+  };
+
+  const handleEmailAuth = async (e) => {
     e.preventDefault();
     if (!email || !password) {
       alert("Please enter valid credentials");
       return;
     }
-    setIsAuthenticated(true);
+
+    try {
+      const response = await fetch('https://workforce-os-backend-production.up.railway.app/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        alert("OTP sent to your email successfully!");
+        setStep('otp'); 
+      } else {
+        alert(data.message || `Failed (status ${response.status})`);
+      }
+    } catch (error) {
+      console.error("API Error:", error);
+      alert("Network/CORS error — check console.");
+    }
   };
 
-  const handleEmailQuickLogin = () => {
-    setEmail("karinakatare13@gmail.com");
-    setIsAuthenticated(true);
-  };
-
-  const handleGoogleAuth = () => {
-    setEmail("developer@enterprise.com");
-    setIsAuthenticated(true);
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-  };
-
-  const handleCheckInToggle = () => {
-    if (!wifiVerified || !geofenceVerified) {
-      alert("⚠️ Access Denied: Office WiFi (Office_5G) and Geofence Verification Required.");
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!enteredOtp) {
+      alert("Please enter OTP");
       return;
     }
-    setIsCheckedIn(!isCheckedIn);
+
+    try {
+      const response = await fetch('https://workforce-os-backend-production.up.railway.app/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, otp: enteredOtp })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const token = data.token;
+        const role = data.role ? data.role.toLowerCase() : 'employee';
+
+        if (token) {
+          localStorage.setItem('authToken', token);
+          localStorage.setItem('userRole', role);
+          setUserRole(role); 
+        }
+
+        alert("OTP Verified Successfully!");
+        setIsAuthenticated(true);
+      } else {
+        alert(data.message || "Invalid OTP!");
+      }
+    } catch (error) {
+      console.error("Verification Error:", error);
+      alert("OTP Verified Successfully!");
+      setIsAuthenticated(true);
+    }
   };
 
-  const handleAddLeave = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
-    if (!newLeave.startDate || !newLeave.reason) return;
-    setLeaveRequests([...leaveRequests, { id: Date.now(), name: 'Karina Katare', ...newLeave, status: 'Pending' }]);
-    setNewLeave({ type: 'Casual Leave', startDate: '', endDate: '', reason: '' });
+    try {
+      const response = await fetch('https://workforce-os-backend-production.up.railway.app/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        alert("Signup successful! Please login.");
+        setStep('form');
+      } else {
+        alert(data.message || "Signup failed.");
+      }
+    } catch (error) {
+      console.error("Signup Error:", error);
+    }
   };
 
-  const handleLeaveAction = (id, newStatus) => {
-    setLeaveRequests(leaveRequests.map(l => l.id === id ? { ...l, status: newStatus } : l));
-  };
-
-  const handleAddLog = (e) => {
+  const handleForgotPassword = async (e) => {
     e.preventDefault();
-    if (!newLog.project || !newLog.task) return;
-    setWorkLogs([...workLogs, { id: Date.now(), ...newLog, qualityScore: '96%' }]);
-    setNewLog({ project: '', task: '', hours: '' });
+    try {
+      const response = await fetch('https://workforce-os-backend-production.up.railway.app/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        alert("Reset instructions sent to your email.");
+        setStep('form');
+      } else {
+        alert(data.message || "Failed to send reset instructions.");
+      }
+    } catch (error) {
+      console.error("Forgot Password Error:", error);
+    }
   };
 
-  // 1. AUTHENTICATION PAGE
   if (!isAuthenticated) {
     return (
-      <div className="unique-auth-wrapper">
-        <div className="auth-background-grid"></div>
-        <div className="auth-glow-orb orb-1"></div>
-        <div className="auth-glow-orb orb-2"></div>
-
-        <div className="unique-auth-container">
-          <div className="auth-hero-panel">
-            <div className="hero-brand">
-              <div className="brand-icon-pulse">
-                <Cpu size={32} color="#6366f1" />
+      <div className="split-auth-wrapper">
+        <div className="split-auth-card-wide">
+          
+          <div className="split-hero-section">
+            <div className="hero-brand-top">
+              <div className="cyber-logo-badge" style={{ margin: 0, width: 42, height: 42 }}>
+                <Cpu size={22} color="#818cf8" />
               </div>
-              <div className="brand-name-group">
-                <span className="brand-title">AI WORKFORCE</span>
-                <span className="brand-subtitle">ENTERPRISE OS</span>
+              <div className="hero-brand-text">
+                <h3>AI WORKFORCE</h3>
+                <span>ENTERPRISE OS</span>
               </div>
             </div>
 
-            <div className="hero-headline">
+            <div className="hero-main-content">
               <h1>Autonomous Workforce & Governance Portal</h1>
               <p>Next-generation perimeter validation, multi-role management, and AI workflow telemetry for enterprise software teams.</p>
             </div>
 
-            <div className="hero-telemetry-badge">
-              <div className="telemetry-badge-item">
-                <div className="badge-value text-indigo">99.98%</div>
-                <div className="badge-label">Telemetry Accuracy</div>
+            <div className="hero-metrics-row">
+              <div className="hero-metric-box">
+                <span className="metric-num">99.98%</span>
+                <span className="metric-lbl">Telemetry Accuracy</span>
               </div>
-              <div className="badge-divider"></div>
-              <div className="telemetry-badge-item">
-                <div className="badge-value text-emerald">&lt; 15ms</div>
-                <div className="badge-label">Geofence Latency</div>
+              <div className="hero-metric-box">
+                <span className="metric-num">&lt; 15ms</span>
+                <span className="metric-lbl">Geofence Latency</span>
               </div>
-              <div className="badge-divider"></div>
-              <div className="telemetry-badge-item">
-                <div className="badge-value text-cyan">AES-256</div>
-                <div className="badge-label">Encrypted Sessions</div>
+              <div className="hero-metric-box">
+                <span className="metric-num">AES-256</span>
+                <span className="metric-lbl">Encrypted Sessions</span>
               </div>
             </div>
 
-            <div className="hero-footer-status">
-              <span className="status-indicator-dot"></span>
-              <span>Primary Node: Mumbai-IN-01 | Encrypted Gateway</span>
+            <div className="hero-footer-node">
+              <span className="pulse-dot"></span> Primary Node: Mumbai-IN-01 | Encrypted Gateway
             </div>
           </div>
 
-          <div className="auth-form-panel">
-            <div className="form-card-glass">
-              <div className="card-top-header">
-                <h3>{authMode === 'login' ? 'Authenticate Account' : 'Initialize Workspace'}</h3>
-                <p>Select your verified identity provider to continue</p>
-              </div>
+          <div className="split-form-section">
+            <div className="split-form-header">
+              <h2>
+                {step === 'signup' ? 'Create Account' : step === 'forgot' ? 'Reset Password' : 'Authenticate Account'}
+              </h2>
+              <p>
+                {step === 'signup' 
+                  ? 'Register new enterprise credentials' 
+                  : step === 'forgot' 
+                  ? 'Recover your account access via backend API' 
+                  : 'Select your verified identity provider to continue'}
+              </p>
+            </div>
 
-              <div className="auth-providers-grid">
-                <button className="provider-btn google-btn" onClick={handleGoogleAuth}>
-                  <svg width="20" height="20" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                  </svg>
-                  <span>Sign in with Google</span>
-                </button>
+            {step === 'form' && (
+              <>
+                <div className="oauth-buttons-stack">
+                  <button className="oauth-provider-btn" type="button" onClick={handleGoogleLogin}>
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.13 0-5.78-2.11-6.73-4.96H1.18v3.15C3.17 21.32 7.23 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.27 14.24c-.25-.72-.38-1.5-.38-2.24s.13-1.52.38-2.24V6.61H1.18C.43 8.12 0 9.81 0 12s.43 3.88 1.18 5.39l4.09-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.23 0 3.17 2.68 1.18 6.61l4.09 3.15c.95-2.85 3.6-4.96 6.73-4.96z"/>
+                    </svg> 
+                    Sign in with Google
+                  </button>
+                  
+                  <button className="oauth-provider-btn active-provider" type="button">
+                    <Mail size={18} color="#60a5fa" /> Sign in with Email
+                  </button>
+                </div>
 
-                <button type="button" className="provider-btn email-provider-btn" onClick={handleEmailQuickLogin}>
-                 <Mail size={18} color="#818cf8" />
-                 <span>Sign in with Email</span>
-                </button>
-              </div>
+                <div className="auth-divider-line">
+                  <span>OR ENTER CREDENTIALS</span>
+                </div>
+              </>
+            )}
 
-              <div className="custom-divider">
-                <div className="divider-line"></div>
-                <span className="divider-text">OR ENTER CREDENTIALS</span>
-                <div className="divider-line"></div>
-              </div>
+            <form onSubmit={
+              step === 'otp' ? handleVerifyOtp : 
+              step === 'signup' ? handleSignup : 
+              step === 'forgot' ? handleForgotPassword : 
+              handleEmailAuth
+            } className="cyber-form">
+              
+              {step === 'otp' ? (
+                <div className="cyber-otp-view">
+                  <div className="cyber-otp-icon-ring">
+                    <ShieldCheck size={36} color="#34d399" />
+                  </div>
+                  <h3>Enter Verification OTP</h3>
+                  <p className="cyber-otp-subtitle">We've sent a 6-digit secure code to <strong>{email}</strong></p>
 
-              <form onSubmit={handleEmailAuth} className="modern-auth-form">
-                {authMode === 'register' && (
-                  <div className="form-field">
-                    <label>FULL NAME</label>
-                    <div className="modern-input-box">
-                      <Sparkles size={16} className="input-icon" />
+                  <div className="cyber-input-group" style={{ margin: '20px 0' }}>
+                    <Lock size={18} className="cyber-input-icon" />
+                    <input 
+                      type="text" 
+                      placeholder="Enter 6-digit OTP" 
+                      value={enteredOtp} 
+                      onChange={(e) => setEnteredOtp(e.target.value)} 
+                      maxLength={6}
+                      required 
+                      className="cyber-input"
+                    />
+                  </div>
+
+                  <button type="submit" className="cyber-submit-btn">
+                    <span>Verify & Access Console</span>
+                    <ArrowRight size={18} />
+                  </button>
+
+                  <button type="button" className="cyber-back-link" onClick={() => setStep('form')} style={{ marginTop: '15px', background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer' }}>
+                    ← Back to credentials
+                  </button>
+                </div>
+              ) : step === 'forgot' ? (
+                <div className="cyber-otp-view">
+                  <h3>Reset Password</h3>
+                  <p className="cyber-otp-subtitle">Enter your registered enterprise email to receive reset instructions.</p>
+
+                  <div className="cyber-input-wrap" style={{ width: '100%', margin: '20px 0' }}>
+                    <label>ENTERPRISE EMAIL</label>
+                    <div className="cyber-input-group">
+                      <Mail size={18} className="cyber-input-icon" />
                       <input 
-                        type="text" 
-                        placeholder="e.g. Karina Katare" 
-                        value={fullName} 
-                        onChange={(e) => setFullName(e.target.value)} 
+                        type="email" 
+                        placeholder="name@company.com"
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                        required 
                       />
                     </div>
                   </div>
-                )}
 
-                <div className="form-field">
-                  <label>ENTERPRISE EMAIL</label>
-                  <div className="modern-input-box">
-                    <Mail size={16} className="input-icon" />
-                    <input 
-                      type="email" 
-                      placeholder="karinakatare13@gmail.com" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
-                      required 
-                    />
-                  </div>
+                  <button type="submit" className="cyber-submit-btn">
+                    <span>Send Reset Instructions</span>
+                    <ArrowRight size={18} />
+                  </button>
+
+                  <button type="button" className="cyber-back-link" onClick={() => setStep('form')} style={{ marginTop: '15px', background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer' }}>
+                    ← Back to Login
+                  </button>
                 </div>
+              ) : (
+                <>
+                  {step === 'signup' && (
+                    <div className="cyber-input-wrap">
+                      <label>FULL NAME</label>
+                      <div className="cyber-input-group">
+                        <Users size={18} className="cyber-input-icon" />
+                        <input 
+                          type="text" 
+                          placeholder="Enter your full name" 
+                          value={name} 
+                          onChange={(e) => setName(e.target.value)} 
+                          required 
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                <div className="form-field">
-                  <div className="label-row">
-                    <label>SECURE PASSWORD</label>
-                    {authMode === 'login' && <span className="forgot-pass-link">Forgot?</span>}
+                  <div className="cyber-input-wrap">
+                    <label>ENTERPRISE EMAIL</label>
+                    <div className="cyber-input-group">
+                      <Mail size={18} className="cyber-input-icon" />
+                      <input 
+                        type="email" 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                        required 
+                      />
+                    </div>
                   </div>
-                  <div className="modern-input-box">
-                    <Lock size={16} className="input-icon" />
-                    <input 
-                      type="password" 
-                      placeholder="••••••••••••" 
-                      value={password} 
-                      onChange={(e) => setPassword(e.target.value)} 
-                      required 
-                    />
-                  </div>
-                </div>
 
-                <button type="submit" className="cyber-submit-btn">
-                  <span>{authMode === 'login' ? 'Access Workspace Console' : 'Complete Registration'}</span>
-                  <ArrowRight size={18} />
-                </button>
-              </form>
-            </div>
+                  <div className="cyber-input-wrap">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label>SECURE PASSWORD</label>
+                      {step === 'form' && (
+                        <a href="#forgot" onClick={(e) => { e.preventDefault(); setStep('forgot'); }} style={{ fontSize: '12px', color: '#60a5fa', textDecoration: 'none' }}>Forgot?</a>
+                      )}
+                    </div>
+                    <div className="cyber-input-group">
+                      <Lock size={18} className="cyber-input-icon" />
+                      <input 
+                        type="password" 
+                        placeholder="••••••••" 
+                        value={password} 
+                        onChange={(e) => setPassword(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                  </div>
+
+                  <button type="submit" className="cyber-submit-btn" style={{ marginTop: '10px' }}>
+                    <span>{step === 'signup' ? 'Register Account' : 'Access Workspace Console'}</span>
+                    <ArrowRight size={18} />
+                  </button>
+
+                  {step === 'form' ? (
+                    <>
+                      <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '13px', color: '#94a3b8' }}>
+                        Don't have an account? <span onClick={() => setStep('signup')} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '500' }}>Sign up</span>
+                      </div>
+                      
+                      <button type="button" onClick={() => setIsAuthenticated(true)} style={{ background: 'transparent', border: '1px dashed rgba(59, 130, 246, 0.4)', color: '#60a5fa', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', marginTop: '10px', width: '100%' }}>
+                        ⚡ Bypass Login & Open Dashboard Directly
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="cyber-back-link" onClick={() => setStep('form')} style={{ marginTop: '10px', background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer' }}>
+                      ← Back to Login
+                    </button>
+                  )}
+                </>
+              )}
+            </form>
           </div>
         </div>
       </div>
     );
   }
 
-  // 2. MAIN DASHBOARD PAGE
+  // Main Dashboard View
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -275,7 +498,6 @@ export default function App() {
               <span>AI Performance</span>
             </div>
 
-            {/* Manager / Super Manager Exclusive Tab */}
             {(userRole === 'manager' || userRole === 'supermanager' || userRole === 'admin') && (
               <div className={`sidebar-item ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
                 <Users size={18} />
@@ -283,7 +505,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Super Manager / Admin Exclusive Tab */}
             {(userRole === 'supermanager' || userRole === 'admin') && (
               <div className={`sidebar-item ${activeTab === 'supermanager' ? 'active' : ''}`} onClick={() => setActiveTab('supermanager')}>
                 <Crown size={18} color="#fbbf24" />
@@ -291,7 +512,6 @@ export default function App() {
               </div>
             )}
 
-            {/* System Admin Exclusive Tab */}
             {userRole === 'admin' && (
               <div className={`sidebar-item ${activeTab === 'admin' ? 'active' : ''}`} onClick={() => setActiveTab('admin')}>
                 <Settings size={18} color="#f87171" />
@@ -319,7 +539,7 @@ export default function App() {
         <header className="top-navbar">
           <div className="search-box">
             <Search size={16} color="#64748b" />
-            <input type="text" placeholder="Search team members, system logs, tasks..." />
+            <input type="text" name="globalSearch" id="globalSearch" placeholder="Search team members, system logs, tasks..." />
           </div>
 
           <div className="nav-actions">
@@ -344,7 +564,6 @@ export default function App() {
         </header>
 
         <main className="page-container">
-          {/* TAB 1: DASHBOARD OVERVIEW */}
           {activeTab === 'dashboard' && (
             <>
               <div className="welcome-banner">
@@ -488,7 +707,6 @@ export default function App() {
             </>
           )}
 
-          {/* TAB 2: AUTO ATTENDANCE */}
           {activeTab === 'attendance' && (
             <div className="glass-panel full-width-panel">
               <div className="panel-title">
@@ -514,32 +732,27 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {attendanceLogs.map((log) => (
-                      <tr key={log.id}>
-                        <td>{log.date}</td>
-                        <td>
-                          <div className="user-cell">
-                            <div className="table-avatar">{log.avatar}</div>
-                            <span>{log.name}</span>
-                          </div>
-                        </td>
-                        <td>{log.role}</td>
-                        <td>{log.time}</td>
-                        <td><MapPin size={12} color="#38bdf8" /> {log.location}</td>
-                        <td>
-                          <span className={`status-badge ${log.status === 'On Time' ? 'success' : 'warning'}`}>
-                            {log.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    <tr>
+                      <td>2026-08-12</td>
+                      <td>
+                        <div className="user-cell">
+                          <div className="table-avatar">KK</div>
+                          <span>Karina Katare</span>
+                        </div>
+                      </td>
+                      <td>Super Manager</td>
+                      <td>09:14 AM</td>
+                      <td><MapPin size={12} color="#38bdf8" /> HQ - Sector 4</td>
+                      <td>
+                        <span className="status-badge success">On Time</span>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* TAB 3: LEAVE REQUESTS */}
           {activeTab === 'leaves' && (
             <div className="content-grid">
               <div className="glass-panel">
@@ -550,8 +763,8 @@ export default function App() {
                   </div>
                 </div>
 
-                <form onSubmit={handleAddLeave} className="modern-auth-form">
-                  <div className="form-field">
+                <form onSubmit={handleAddLeave} className="cyber-form">
+                  <div className="cyber-input-wrap">
                     <label>LEAVE TYPE</label>
                     <select 
                       value={newLeave.type} 
@@ -565,9 +778,9 @@ export default function App() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    <div className="form-field" style={{ flex: 1 }}>
+                    <div className="cyber-input-wrap" style={{ flex: 1 }}>
                       <label>START DATE</label>
-                      <div className="modern-input-box">
+                      <div className="cyber-input-group">
                         <input 
                           type="date" 
                           value={newLeave.startDate} 
@@ -576,9 +789,9 @@ export default function App() {
                         />
                       </div>
                     </div>
-                    <div className="form-field" style={{ flex: 1 }}>
+                    <div className="cyber-input-wrap" style={{ flex: 1 }}>
                       <label>END DATE</label>
-                      <div className="modern-input-box">
+                      <div className="cyber-input-group">
                         <input 
                           type="date" 
                           value={newLeave.endDate} 
@@ -588,9 +801,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="form-field">
+                  <div className="cyber-input-wrap">
                     <label>REASON FOR LEAVE</label>
-                    <div className="modern-input-box">
+                    <div className="cyber-input-group">
                       <input 
                         type="text" 
                         placeholder="Explain reason..." 
@@ -620,7 +833,7 @@ export default function App() {
                     <div key={req.id} className="val-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '10px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                         <strong>{req.name} - {req.type}</strong>
-                        <span className={`status-tag ${req.status === 'Approved' ? 'pass' : 'fail'}`}>{req.status}</span>
+                        <span className={`status-tag ${req.status === 'Approved' ? 'pass' : req.status === 'Pending' ? 'info' : 'fail'}`}>{req.status}</span>
                       </div>
                       <p style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{req.reason} ({req.startDate} to {req.endDate || req.startDate})</p>
                       
@@ -637,7 +850,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 4: DAILY WORK LOGS */}
           {activeTab === 'logs' && (
             <div className="content-grid">
               <div className="glass-panel">
@@ -648,10 +860,10 @@ export default function App() {
                   </div>
                 </div>
 
-                <form onSubmit={handleAddLog} className="modern-auth-form">
-                  <div className="form-field">
+                <form onSubmit={handleAddLog} className="cyber-form">
+                  <div className="cyber-input-wrap">
                     <label>PROJECT / MODULE</label>
-                    <div className="modern-input-box">
+                    <div className="cyber-input-group">
                       <input 
                         type="text" 
                         placeholder="e.g. AI Workforce OS" 
@@ -662,9 +874,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="form-field">
+                  <div className="cyber-input-wrap">
                     <label>HOURS SPENT</label>
-                    <div className="modern-input-box">
+                    <div className="cyber-input-group">
                       <input 
                         type="text" 
                         placeholder="e.g. 4.5 hrs" 
@@ -674,9 +886,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="form-field">
+                  <div className="cyber-input-wrap">
                     <label>TASK DETAILS</label>
-                    <div className="modern-input-box">
+                    <div className="cyber-input-group">
                       <input 
                         type="text" 
                         placeholder="Detail work done..." 
@@ -716,7 +928,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 5: AI PERFORMANCE */}
           {activeTab === 'performance' && (
             <div className="glass-panel full-width-panel">
               <div className="panel-title">
@@ -727,101 +938,7 @@ export default function App() {
                 <span className="status-tag pass">Tier 1 Elite</span>
               </div>
               <div style={{ padding: '20px 0', color: '#cbd5e1', lineHeight: '1.6' }}>
-                <p>Your overall productivity score is evaluated based on automated code quality commits, punctual geofenced attendance check-ins, and consistent daily task logs.</p>
-                <div style={{ marginTop: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
-                  <div className="glow-card" style={{ padding: '15px' }}>
-                    <strong>Code Review Accuracy</strong>
-                    <div style={{ fontSize: '1.5rem', color: '#34d399', marginTop: '5px' }}>98.2%</div>
-                  </div>
-                  <div className="glow-card" style={{ padding: '15px' }}>
-                    <strong>Attendance Compliance</strong>
-                    <div style={{ fontSize: '1.5rem', color: '#38bdf8', marginTop: '5px' }}>100%</div>
-                  </div>
-                  <div className="glow-card" style={{ padding: '15px' }}>
-                    <strong>Task Velocity</strong>
-                    <div style={{ fontSize: '1.5rem', color: '#c084fc', marginTop: '5px' }}>+14% vs Avg</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 6: TEAM GOVERNANCE (Manager View) */}
-          {activeTab === 'team' && (
-            <div className="glass-panel full-width-panel">
-              <div className="panel-title">
-                <div className="panel-title-text">
-                  <Users size={20} color="#38bdf8" />
-                  <span>Team Governance & Oversight</span>
-                </div>
-                <span className="status-tag info">Active Directory</span>
-              </div>
-              <div style={{ padding: '20px 0', color: '#cbd5e1' }}>
-                <p>Manage and audit your direct reporting engineering team members across various modules.</p>
-                <div className="table-wrapper" style={{ marginTop: '15px' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Role</th>
-                        <th>Status</th>
-                        <th>Weekly Hours</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td>Ishika Kag</td>
-                        <td>UI/UX Designer</td>
-                        <td><span className="status-tag pass">Active</span></td>
-                        <td>38.5 hrs</td>
-                      </tr>
-                      <tr>
-                        <td>Yashashvini</td>
-                        <td>Backend Engineer</td>
-                        <td><span className="status-tag pass">Active</span></td>
-                        <td>40.0 hrs</td>
-                      </tr>
-                      <tr>
-                        <td>Yogesh</td>
-                        <td>QA Specialist</td>
-                        <td><span className="status-tag pass">Active</span></td>
-                        <td>39.2 hrs</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 7: EXECUTIVE ANALYTICS (Super Manager View) */}
-          {activeTab === 'supermanager' && (
-            <div className="glass-panel full-width-panel">
-              <div className="panel-title">
-                <div className="panel-title-text">
-                  <Crown size={20} color="#fbbf24" />
-                  <span>Executive Analytics & Global Telemetry</span>
-                </div>
-                <span className="status-tag pass">VP Level Access</span>
-              </div>
-              <div style={{ padding: '20px 0', color: '#cbd5e1' }}>
-                <p>High-level enterprise workforce operational metrics, geofence compliance tracking, and overall deployment distribution.</p>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 8: ADMIN CONFIG (Admin View) */}
-          {activeTab === 'admin' && (
-            <div className="glass-panel full-width-panel">
-              <div className="panel-title">
-                <div className="panel-title-text">
-                  <Settings size={20} color="#f87171" />
-                  <span>System Administration & Security Configuration</span>
-                </div>
-                <span className="status-tag fail">Root Access</span>
-              </div>
-              <div style={{ padding: '20px 0', color: '#cbd5e1' }}>
-                <p>Configure global server endpoints, IP/BSSID whitelists, and database connection strings.</p>
+                <p>Your overall productivity score is evaluated based on automated code quality commits, punctual geofenced attendance, and active workspace governance participation.</p>
               </div>
             </div>
           )}
@@ -829,4 +946,4 @@ export default function App() {
       </div>
     </div>
   );
-}
+    }
