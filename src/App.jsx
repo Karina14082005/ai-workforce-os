@@ -20,6 +20,16 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
  
+  // ---- Reset Password page state (email link: /reset-password?token=...) ----
+  const [resetPasswordMode, setResetPasswordMode] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [newPasswordValue, setNewPasswordValue] = useState('');
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetError, setResetError] = useState('');
+ 
+ 
   const [userRole, setUserRole] = useState('supermanager'); 
   const [activeTab, setActiveTab] = useState('dashboard');
  
@@ -166,6 +176,35 @@ export default function App() {
     }
   };
  
+  // Turns a raw browser user-agent string into a short readable label,
+  // e.g. "Chrome on Windows"
+  const parseDeviceInfo = (ua) => {
+    if (!ua) return 'Unknown device';
+    let browser = 'Unknown browser';
+    if (ua.includes('Edg/')) browser = 'Edge';
+    else if (ua.includes('Chrome/')) browser = 'Chrome';
+    else if (ua.includes('Firefox/')) browser = 'Firefox';
+    else if (ua.includes('Safari/')) browser = 'Safari';
+ 
+    let os = 'Unknown OS';
+    if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Mac OS')) os = 'macOS';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+    else if (ua.includes('Linux')) os = 'Linux';
+ 
+    return `${browser} on ${os}`;
+  };
+ 
+  const formatDateTime = (iso) => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  };
+ 
   useEffect(() => {
     if (isAuthenticated && activeTab === 'governance') {
       if (!usersLoaded) fetchTeamUsers();
@@ -177,6 +216,13 @@ export default function App() {
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
     const urlToken = queryParams.get('token');
+ 
+    // /reset-password?token=... — this is a password-reset link, NOT a login token
+    if (window.location.pathname.includes('reset-password') && urlToken) {
+      setResetToken(urlToken);
+      setResetPasswordMode(true);
+      return;
+    }
  
     if (urlToken) {
       localStorage.setItem('authToken', urlToken);
@@ -390,7 +436,7 @@ export default function App() {
   const handleForgotPassword = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('https://workforce-os-backend-production.up.railway.app/api/auth/forgot-password', {
+      const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -407,6 +453,48 @@ export default function App() {
     }
   };
  
+  // POST /api/auth/reset-password — { token, newPassword }
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetError('');
+ 
+    if (!newPasswordValue || newPasswordValue.length < 6) {
+      setResetError('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPasswordValue !== confirmPasswordValue) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+ 
+    setResetSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword: newPasswordValue })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setResetSuccess(true);
+      } else {
+        setResetError(data.message || `Failed to reset password (status ${response.status})`);
+      }
+    } catch (error) {
+      console.error('Reset password error:', error);
+      setResetError('Network error while resetting password.');
+    } finally {
+      setResetSubmitting(false);
+    }
+  };
+ 
+  const goToLoginFromReset = () => {
+    window.history.replaceState({}, document.title, '/');
+    setResetPasswordMode(false);
+    setResetSuccess(false);
+    window.location.href = '/';
+  };
+ 
   const ToastStack = () => (
     <div className="toast-stack">
       {toasts.map((t) => (
@@ -419,6 +507,96 @@ export default function App() {
       ))}
     </div>
   );
+ 
+  if (resetPasswordMode) {
+    return (
+      <div className="split-auth-wrapper">
+        <div className="split-auth-card-wide">
+          <div className="split-hero-section">
+            <div className="hero-brand-top">
+              <div className="cyber-logo-badge" style={{ margin: 0, width: 42, height: 42 }}>
+                <Cpu size={22} color="#818cf8" />
+              </div>
+              <div className="hero-brand-text">
+                <h3>AI WORKFORCE</h3>
+                <span>ENTERPRISE OS</span>
+              </div>
+            </div>
+            <div className="hero-main-content">
+              <h1>Reset Your Password</h1>
+              <p>Choose a new secure password to regain access to your enterprise workspace.</p>
+            </div>
+          </div>
+ 
+          <div className="split-form-section">
+            {!resetSuccess ? (
+              <>
+                <div className="split-form-header">
+                  <h2>Set New Password</h2>
+                  <p>Enter and confirm your new password below.</p>
+                </div>
+ 
+                <form onSubmit={handleResetPassword} className="cyber-form">
+                  <div className="cyber-form-inner">
+                    <div className="cyber-input-field-block">
+                      <label className="cyber-field-label">NEW PASSWORD</label>
+                      <div className="cyber-input-group">
+                        <Lock size={18} className="cyber-input-icon" />
+                        <input
+                          type="password"
+                          placeholder="Enter new password"
+                          value={newPasswordValue}
+                          onChange={(e) => setNewPasswordValue(e.target.value)}
+                          required
+                          className="cyber-input"
+                        />
+                      </div>
+                    </div>
+ 
+                    <div className="cyber-input-field-block">
+                      <label className="cyber-field-label">CONFIRM PASSWORD</label>
+                      <div className="cyber-input-group">
+                        <Lock size={18} className="cyber-input-icon" />
+                        <input
+                          type="password"
+                          placeholder="Re-enter new password"
+                          value={confirmPasswordValue}
+                          onChange={(e) => setConfirmPasswordValue(e.target.value)}
+                          required
+                          className="cyber-input"
+                        />
+                      </div>
+                    </div>
+ 
+                    {resetError && (
+                      <div className="error-banner">
+                        <AlertCircle size={16} /> {resetError}
+                      </div>
+                    )}
+ 
+                    <button type="submit" className="cyber-submit-btn" disabled={resetSubmitting}>
+                      {resetSubmitting ? 'Resetting...' : 'Reset Password'} <ArrowRight size={16} />
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <div className="cyber-otp-view">
+                <div className="cyber-otp-icon-ring">
+                  <CheckCircle2 size={36} color="#34d399" />
+                </div>
+                <h3>Password Reset Successful</h3>
+                <p className="cyber-otp-subtitle">Your password has been updated. You can now log in with your new password.</p>
+                <button type="button" className="cyber-submit-btn" style={{ marginTop: 20 }} onClick={goToLoginFromReset}>
+                  Go to Login <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
  
   if (!isAuthenticated) {
     return (
@@ -1241,20 +1419,27 @@ export default function App() {
  
                 {!sessionsLoading && !sessionsError && sessions.length > 0 && (
                   <div className="validation-list">
-                    {sessions.map((s, idx) => (
-                      <div key={s.id || idx} className="val-item">
-                        <div className="val-left">
-                          <Wifi size={16} color="#38bdf8" />
-                          <div>
-                            <strong>{s.device || s.userAgent || 'Unknown device'}</strong>
-                            <p>{s.ipAddress || s.location || 'Location unavailable'}{s.createdAt ? ` · ${s.createdAt}` : ''}</p>
+                    {sessions.map((s, idx) => {
+                      const isExpired = s.expiryTime && new Date(s.expiryTime) < new Date();
+                      const isThisDevice = typeof navigator !== 'undefined' && s.deviceInfo === navigator.userAgent;
+                      return (
+                        <div key={s.id || idx} className="val-item">
+                          <div className="val-left">
+                            <Wifi size={16} color="#38bdf8" />
+                            <div>
+                              <strong>{parseDeviceInfo(s.deviceInfo)}</strong>
+                              <p>
+                                Logged in: {formatDateTime(s.loginTime)}
+                                {s.expiryTime ? ` · Expires: ${formatDateTime(s.expiryTime)}` : ''}
+                              </p>
+                            </div>
                           </div>
+                          <span className={`status-tag ${isExpired ? 'fail' : 'pass'}`}>
+                            {isExpired ? 'EXPIRED' : isThisDevice ? 'THIS DEVICE' : 'ACTIVE'}
+                          </span>
                         </div>
-                        <span className={`status-tag ${s.current ? 'pass' : 'info'}`}>
-                          {s.current ? 'THIS DEVICE' : 'ACTIVE'}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
