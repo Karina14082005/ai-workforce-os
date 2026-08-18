@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Users, Clock, Calendar, FileText, 
@@ -8,7 +7,7 @@ import {
   PlusCircle, Settings, Crown, Globe, Zap, ChevronDown
 } from 'lucide-react';
 import './App.css';
- 
+import { getVisibleMenu, normalizeRole, canViewAllRecords } from './lib/roleConfig';
 const API_BASE = 'https://workforce-os-backend-production.up.railway.app';
  
 export default function App() {
@@ -16,7 +15,7 @@ export default function App() {
   const [step, setStep] = useState('form'); 
   const [enteredOtp, setEnteredOtp] = useState('');
  
-  const [email, setEmail] = useState('karinakatare13@gmail.com');
+  const [email, setEmail] = useState('karinakatre13@gmail.com');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
  
@@ -63,6 +62,30 @@ export default function App() {
   const [sessionsError, setSessionsError] = useState('');
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
+ 
+  // ---- organization-controller integration state ----
+  const [myTeam, setMyTeam] = useState([]);
+  const [myTeamLoading, setMyTeamLoading] = useState(false);
+  const [myTeamError, setMyTeamError] = useState('');
+  const [myTeamLoaded, setMyTeamLoaded] = useState(false);
+ 
+  const [orgTeams, setOrgTeams] = useState([]);
+  const [orgTeamsLoading, setOrgTeamsLoading] = useState(false);
+  const [orgTeamsError, setOrgTeamsError] = useState('');
+  const [orgTeamsLoaded, setOrgTeamsLoaded] = useState(false);
+ 
+  const [departments, setDepartments] = useState([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [departmentsError, setDepartmentsError] = useState('');
+  const [departmentsLoaded, setDepartmentsLoaded] = useState(false);
+ 
+  const [newTeam, setNewTeam] = useState({ name: '', departmentId: '', managerId: '' });
+  const [creatingTeam, setCreatingTeam] = useState(false);
+ 
+  const [newDepartmentName, setNewDepartmentName] = useState('');
+  const [creatingDepartment, setCreatingDepartment] = useState(false);
+ 
+  const [assigningUserId, setAssigningUserId] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
  
   const pushToast = (message, type = 'info') => {
@@ -176,6 +199,152 @@ export default function App() {
     }
   };
  
+  // GET /api/organization/my-team
+  const fetchMyTeam = async () => {
+    setMyTeamLoading(true);
+    setMyTeamError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/organization/my-team`, { method: 'GET', headers: authHeaders() });
+      const data = await res.json().catch(() => ([]));
+      if (res.ok) {
+        setMyTeam(Array.isArray(data) ? data : (data.members || []));
+      } else {
+        setMyTeamError(data.message || `Failed to load your team (status ${res.status})`);
+      }
+    } catch (err) {
+      console.error('Fetch my-team error:', err);
+      setMyTeamError('Network error while loading your team.');
+    } finally {
+      setMyTeamLoading(false);
+      setMyTeamLoaded(true);
+    }
+  };
+ 
+  // GET /api/organization/teams
+  const fetchOrgTeams = async () => {
+    setOrgTeamsLoading(true);
+    setOrgTeamsError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/organization/teams`, { method: 'GET', headers: authHeaders() });
+      const data = await res.json().catch(() => ([]));
+      if (res.ok) {
+        setOrgTeams(Array.isArray(data) ? data : (data.teams || []));
+      } else {
+        setOrgTeamsError(data.message || `Failed to load teams (status ${res.status})`);
+      }
+    } catch (err) {
+      console.error('Fetch teams error:', err);
+      setOrgTeamsError('Network error while loading teams.');
+    } finally {
+      setOrgTeamsLoading(false);
+      setOrgTeamsLoaded(true);
+    }
+  };
+ 
+  // GET /api/organization/departments
+  const fetchDepartments = async () => {
+    setDepartmentsLoading(true);
+    setDepartmentsError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/organization/departments`, { method: 'GET', headers: authHeaders() });
+      const data = await res.json().catch(() => ([]));
+      if (res.ok) {
+        setDepartments(Array.isArray(data) ? data : (data.departments || []));
+      } else {
+        setDepartmentsError(data.message || `Failed to load departments (status ${res.status})`);
+      }
+    } catch (err) {
+      console.error('Fetch departments error:', err);
+      setDepartmentsError('Network error while loading departments.');
+    } finally {
+      setDepartmentsLoading(false);
+      setDepartmentsLoaded(true);
+    }
+  };
+ 
+  // POST /api/organization/teams — Supermanager/Admin only
+  const handleCreateTeam = async (e) => {
+    e.preventDefault();
+    if (!newTeam.name || !newTeam.departmentId || !newTeam.managerId) {
+      pushToast('Please fill team name, department, and manager.', 'error');
+      return;
+    }
+    setCreatingTeam(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/organization/teams`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(newTeam)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        pushToast('Team created successfully.', 'success');
+        setNewTeam({ name: '', departmentId: '', managerId: '' });
+        fetchOrgTeams();
+      } else {
+        pushToast(data.message || 'Failed to create team.', 'error');
+      }
+    } catch (err) {
+      console.error('Create team error:', err);
+      pushToast('Network error while creating team.', 'error');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+ 
+  // POST /api/organization/departments — Supermanager/Admin only
+  const handleCreateDepartment = async (e) => {
+    e.preventDefault();
+    if (!newDepartmentName) {
+      pushToast('Please enter a department name.', 'error');
+      return;
+    }
+    setCreatingDepartment(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/organization/departments`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ name: newDepartmentName })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        pushToast('Department created successfully.', 'success');
+        setNewDepartmentName('');
+        fetchDepartments();
+      } else {
+        pushToast(data.message || 'Failed to create department.', 'error');
+      }
+    } catch (err) {
+      console.error('Create department error:', err);
+      pushToast('Network error while creating department.', 'error');
+    } finally {
+      setCreatingDepartment(false);
+    }
+  };
+ 
+  // PUT /api/organization/users/{userId}/assign-team/{teamId} — Supermanager/Admin only
+  const handleAssignTeam = async (userId, teamId) => {
+    if (!teamId) return;
+    setAssigningUserId(userId);
+    try {
+      const res = await fetch(`${API_BASE}/api/organization/users/${userId}/assign-team/${teamId}`, {
+        method: 'PUT',
+        headers: authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        pushToast('User assigned to team.', 'success');
+      } else {
+        pushToast(data.message || 'Failed to assign team.', 'error');
+      }
+    } catch (err) {
+      console.error('Assign team error:', err);
+      pushToast('Network error while assigning team.', 'error');
+    } finally {
+      setAssigningUserId(null);
+    }
+  };
+ 
   // Turns a raw browser user-agent string into a short readable label,
   // e.g. "Chrome on Windows"
   const parseDeviceInfo = (ua) => {
@@ -209,6 +378,9 @@ export default function App() {
     if (isAuthenticated && activeTab === 'governance') {
       if (!usersLoaded) fetchTeamUsers();
       if (!sessionsLoaded) fetchSessions();
+      if (!myTeamLoaded) fetchMyTeam();
+      if (!orgTeamsLoaded) fetchOrgTeams();
+      if (!departmentsLoaded) fetchDepartments();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, activeTab]);
@@ -236,7 +408,7 @@ export default function App() {
       })
       .then(res => res.json())
       .then(data => {
-        const role = data.role ? data.role.toLowerCase() : 'employee';
+       const role = normalizeRole(data.role);
         localStorage.setItem('userRole', role);
         setUserRole(role);
         setIsAuthenticated(true);
@@ -288,6 +460,9 @@ export default function App() {
       setEnteredOtp('');
       setUsersLoaded(false);
       setSessionsLoaded(false);
+      setMyTeamLoaded(false);
+      setOrgTeamsLoaded(false);
+      setDepartmentsLoaded(false);
       setIsLoggingOut(false);
     }
   };
@@ -387,12 +562,12 @@ export default function App() {
             });
             const profileData = await profileRes.json();
             if (profileRes.ok && profileData.role) {
-              const role = profileData.role.toLowerCase();
+             const role = normalizeRole(profileData.role);
               localStorage.setItem('userRole', role);
               setUserRole(role);
             } else {
               // Fallback agar profile API me role na mile
-              const fallbackRole = data.role ? data.role.toLowerCase() : 'supermanager';
+             const fallbackRole = data.role ? normalizeRole(data.role) : 'employee';
               localStorage.setItem('userRole', fallbackRole);
               setUserRole(fallbackRole);
             }
@@ -892,28 +1067,31 @@ export default function App() {
           </div>
         </div>
  
-        <div className="sidebar-menu">
-          <button className={`menu-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-            <LayoutDashboard size={18} /> Dashboard Overview
-          </button>
-          <button className={`menu-item ${activeTab === 'attendance' ? 'active' : ''}`} onClick={() => setActiveTab('attendance')}>
-            <Clock size={18} /> Auto Attendance <span className="live-pill">Live</span>
-          </button>
-          <button className={`menu-item ${activeTab === 'leaves' ? 'active' : ''}`} onClick={() => setActiveTab('leaves')}>
-            <Calendar size={18} /> Leave Requests <span className="badge-count">1</span>
-          </button>
-          <button className={`menu-item ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
-            <FileText size={18} /> Daily Work Logs
-          </button>
-          <button className={`menu-item ${activeTab === 'performance' ? 'active' : ''}`} onClick={() => setActiveTab('performance')}>
-            <Award size={18} /> AI Performance
-          </button>
-          <button className={`menu-item ${activeTab === 'governance' ? 'active' : ''}`} onClick={() => setActiveTab('governance')}>
-            <Users size={18} /> Team Governance
-          </button>
-          <button className={`menu-item ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>
-            <Crown size={18} /> Executive Analytics
-          </button>
+               <div className="sidebar-menu">
+          {getVisibleMenu(userRole).map((item) => {
+            const iconMap = {
+              dashboard: LayoutDashboard,
+              attendance: Clock,
+              leave: Calendar,
+              logs: FileText,
+              performance: Award,
+              governance: Users,
+              analytics: Crown,
+            };
+            const IconComponent = iconMap[item.key];
+            const tabKey = item.key === 'leave' ? 'leaves' : item.key;
+            return (
+              <button
+                key={item.key}
+                className={`menu-item ${activeTab === tabKey ? 'active' : ''}`}
+                onClick={() => setActiveTab(tabKey)}
+              >
+                <IconComponent size={18} /> {item.label}
+                {item.key === 'attendance' && <span className="live-pill">Live</span>}
+                {item.key === 'leave' && <span className="badge-count">{leaveRequests.filter(l => l.status === 'Pending').length}</span>}
+              </button>
+            );
+          })}
         </div>
  
         <div className="sidebar-footer">
@@ -1102,7 +1280,7 @@ export default function App() {
               <div className="panel-title">
                 <div className="panel-title-text">
                   <Clock size={20} color="#818cf8" />
-                  <span>Automated Attendance Logs & Geofence Sync</span>
+                  <span>{canViewAllRecords(userRole) ? 'Team Attendance Logs & Geofence Sync' : 'My Attendance Logs & Geofence Sync'}</span>
                 </div>
                 <button className="primary-cta-btn" onClick={handleCheckInToggle}>
                   {isCheckedIn ? 'Mark Check-Out' : 'Mark Check-In'}
@@ -1112,25 +1290,27 @@ export default function App() {
               <div className="table-wrapper">
                 <table className="custom-table">
                   <thead>
+                <tr>
+                <th>Date</th>
+                  {canViewAllRecords(userRole) && <th>Team Member</th>}
+                  {canViewAllRecords(userRole) && <th>Role</th>}
+                 <th>Check-in Time</th>
+                 <th>Location / Desk</th>
+                 <th>Status</th>
+                   </tr>
+                 </thead>
+                 <tbody>
                     <tr>
-                      <th>Date</th>
-                      <th>Team Member</th>
-                      <th>Role</th>
-                      <th>Check-in Time</th>
-                      <th>Location / Desk</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>2026-08-14</td>
-                      <td>
-                        <div className="user-cell">
-                          <div className="table-avatar">KK</div>
-                          <span>Karina Katare</span>
-                        </div>
-                      </td>
-                      <td>Super Manager</td>
+                    <td>2026-08-14</td>
+                   {canViewAllRecords(userRole) && (
+                   <td>
+                   <div className="user-cell">
+                    <div className="table-avatar">KK</div>
+                   <span>Karina Katare</span>
+                   </div>
+                    </td>
+                    )}
+                     {canViewAllRecords(userRole) && <td>Super Manager</td>}
                       <td>09:14 AM</td>
                       <td><MapPin size={12} color="#38bdf8" /> HQ - Sector 4</td>
                       <td>
@@ -1443,6 +1623,214 @@ export default function App() {
                   </div>
                 )}
               </div>
+ 
+              {/* MY TEAM — GET /api/organization/my-team */}
+              <div className="glass-panel">
+                <div className="panel-title">
+                  <div className="panel-title-text">
+                    <Users size={20} color="#34d399" />
+                    <span>My Team</span>
+                  </div>
+                  <button className="icon-refresh-btn" onClick={fetchMyTeam} disabled={myTeamLoading}>
+                    {myTeamLoading ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+ 
+                {myTeamLoading && (
+                  <div className="skeleton-list">
+                    <div className="skeleton-row" />
+                    <div className="skeleton-row" />
+                  </div>
+                )}
+ 
+                {!myTeamLoading && myTeamError && (
+                  <div className="error-banner">
+                    <AlertCircle size={16} /> {myTeamError}
+                  </div>
+                )}
+ 
+                {!myTeamLoading && !myTeamError && myTeamLoaded && myTeam.length === 0 && (
+                  <div className="empty-state">No direct reports found.</div>
+                )}
+ 
+                {!myTeamLoading && !myTeamError && myTeam.length > 0 && (
+                  <div className="validation-list">
+                    {myTeam.map((m) => (
+                      <div key={m.id} className="val-item">
+                        <div className="val-left">
+                          <div className="table-avatar">
+                            {(m.name || m.email || '?').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <strong>{m.name || m.email}</strong>
+                            <p>{m.email}</p>
+                          </div>
+                        </div>
+                        <span className="status-tag info">{m.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+ 
+              {/* TEAMS & DEPARTMENTS — GET/POST /api/organization/teams, /departments */}
+              <div className="glass-panel full-width-panel">
+                <div className="panel-title">
+                  <div className="panel-title-text">
+                    <Crown size={20} color="#fbbf24" />
+                    <span>Teams & Departments</span>
+                  </div>
+                  <button className="icon-refresh-btn" onClick={() => { fetchOrgTeams(); fetchDepartments(); }} disabled={orgTeamsLoading || departmentsLoading}>
+                    {(orgTeamsLoading || departmentsLoading) ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+ 
+                <div className="content-grid">
+                  {/* Teams list */}
+                  <div>
+                    <h4 style={{ color: '#94a3b8', fontSize: '0.78rem', letterSpacing: '0.5px', margin: '0 0 12px 0' }}>TEAMS</h4>
+                    {orgTeamsLoading && (
+                      <div className="skeleton-list">
+                        <div className="skeleton-row" />
+                        <div className="skeleton-row" />
+                      </div>
+                    )}
+                    {!orgTeamsLoading && orgTeamsError && (
+                      <div className="error-banner"><AlertCircle size={16} /> {orgTeamsError}</div>
+                    )}
+                    {!orgTeamsLoading && !orgTeamsError && orgTeamsLoaded && orgTeams.length === 0 && (
+                      <div className="empty-state">No teams found.</div>
+                    )}
+                    {!orgTeamsLoading && !orgTeamsError && orgTeams.length > 0 && (
+                      <div className="validation-list">
+                        {orgTeams.map((t) => (
+                          <div key={t.id} className="val-item">
+                            <div className="val-left">
+                              <Users size={16} color="#818cf8" />
+                              <div>
+                                <strong>{t.name}</strong>
+                                <p>{t.departmentName} · Manager: {t.managerName}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+ 
+                    {(userRole === 'admin' || userRole === 'supermanager') && (
+                      <form onSubmit={handleCreateTeam} className="cyber-form-inner" style={{ marginTop: 16, gap: 10 }}>
+                        <div className="cyber-input-wrap">
+                          <label>NEW TEAM NAME</label>
+                          <div className="cyber-input-group">
+                            <input type="text" placeholder="Team name" value={newTeam.name} onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })} />
+                          </div>
+                        </div>
+                        <div className="cyber-input-wrap">
+                          <label>DEPARTMENT</label>
+                          <select
+                            className="role-select"
+                            style={{ width: '100%', padding: '12px' }}
+                            value={newTeam.departmentId}
+                            onChange={(e) => setNewTeam({ ...newTeam, departmentId: e.target.value })}
+                          >
+                            <option value="">Select department</option>
+                            {departments.map((d) => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="cyber-input-wrap">
+                          <label>MANAGER</label>
+                          <select
+                            className="role-select"
+                            style={{ width: '100%', padding: '12px' }}
+                            value={newTeam.managerId}
+                            onChange={(e) => setNewTeam({ ...newTeam, managerId: e.target.value })}
+                          >
+                            <option value="">Select manager</option>
+                            {teamUsers.map((u) => (
+                              <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <button type="submit" className="cyber-submit-btn" disabled={creatingTeam}>
+                          <PlusCircle size={16} /> {creatingTeam ? 'Creating...' : 'Create Team'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+ 
+                  {/* Departments list */}
+                  <div>
+                    <h4 style={{ color: '#94a3b8', fontSize: '0.78rem', letterSpacing: '0.5px', margin: '0 0 12px 0' }}>DEPARTMENTS</h4>
+                    {departmentsLoading && (
+                      <div className="skeleton-list">
+                        <div className="skeleton-row" />
+                        <div className="skeleton-row" />
+                      </div>
+                    )}
+                    {!departmentsLoading && departmentsError && (
+                      <div className="error-banner"><AlertCircle size={16} /> {departmentsError}</div>
+                    )}
+                    {!departmentsLoading && !departmentsError && departmentsLoaded && departments.length === 0 && (
+                      <div className="empty-state">No departments found.</div>
+                    )}
+                    {!departmentsLoading && !departmentsError && departments.length > 0 && (
+                      <div className="validation-list">
+                        {departments.map((d) => (
+                          <div key={d.id} className="val-item">
+                            <div className="val-left">
+                              <Database size={16} color="#38bdf8" />
+                              <strong>{d.name}</strong>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+ 
+                    {(userRole === 'admin' || userRole === 'supermanager') && (
+                      <form onSubmit={handleCreateDepartment} className="cyber-form-inner" style={{ marginTop: 16, gap: 10 }}>
+                        <div className="cyber-input-wrap">
+                          <label>NEW DEPARTMENT NAME</label>
+                          <div className="cyber-input-group">
+                            <input type="text" placeholder="Department name" value={newDepartmentName} onChange={(e) => setNewDepartmentName(e.target.value)} />
+                          </div>
+                        </div>
+                        <button type="submit" className="cyber-submit-btn" disabled={creatingDepartment}>
+                          <PlusCircle size={16} /> {creatingDepartment ? 'Creating...' : 'Create Department'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+ 
+                {(userRole === 'admin' || userRole === 'supermanager') && teamUsers.length > 0 && orgTeams.length > 0 && (
+                  <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #1e293b' }}>
+                    <h4 style={{ color: '#94a3b8', fontSize: '0.78rem', letterSpacing: '0.5px', margin: '0 0 12px 0' }}>ASSIGN USER TO TEAM</h4>
+                    <div className="validation-list">
+                      {teamUsers.map((u) => (
+                        <div key={u.id} className="val-item">
+                          <div className="val-left">
+                            <div className="table-avatar">{(u.name || u.email || '?').slice(0, 2).toUpperCase()}</div>
+                            <strong>{u.name || u.email}</strong>
+                          </div>
+                          <select
+                            className="role-select-inline"
+                            disabled={assigningUserId === u.id}
+                            defaultValue=""
+                            onChange={(e) => handleAssignTeam(u.id, e.target.value)}
+                          >
+                            <option value="" disabled>Assign to team...</option>
+                            {orgTeams.map((t) => (
+                              <option key={t.id} value={t.id}>{t.name} ({t.departmentName})</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
  
@@ -1465,3 +1853,6 @@ export default function App() {
     </div>
   );
 }
+ 
+
+
