@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 import { getVisibleMenu, normalizeRole, canViewAllRecords } from './lib/roleConfig';
+import { checkInApi, checkOutApi, fetchMyHistoryApi } from './lib/attendanceApi';
 const API_BASE = 'https://workforce-os-backend-production.up.railway.app';
  
 export default function App() {
@@ -32,7 +33,11 @@ export default function App() {
   const [userRole, setUserRole] = useState('supermanager'); 
   const [activeTab, setActiveTab] = useState('dashboard');
  
-  const [isCheckedIn, setIsCheckedIn] = useState(true);
+  const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [attendanceHistory, setAttendanceHistory] = useState([]);
+const [historyLoading, setHistoryLoading] = useState(false);
+const [historyError, setHistoryError] = useState('');
+const [historyLoaded, setHistoryLoaded] = useState(false);
   const [geofenceVerified, setGeofenceVerified] = useState(true);
   const [wifiVerified, setWifiVerified] = useState(true);
  
@@ -345,8 +350,7 @@ export default function App() {
     }
   };
  
-  // Turns a raw browser user-agent string into a short readable label,
-  // e.g. "Chrome on Windows"
+ 
   const parseDeviceInfo = (ua) => {
     if (!ua) return 'Unknown device';
     let browser = 'Unknown browser';
@@ -374,16 +378,23 @@ export default function App() {
     }
   };
  
-  useEffect(() => {
+  (() => {
     if (isAuthenticated && activeTab === 'governance') {
       if (!usersLoaded) fetchTeamUsers();
       if (!sessionsLoaded) fetchSessions();
       if (!myTeamLoaded) fetchMyTeam();
       if (!orgTeamsLoaded) fetchOrgTeams();
       if (!departmentsLoaded) fetchDepartments();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }useEffect
+    
   }, [isAuthenticated, activeTab]);
+
+  useEffect(() => {
+  if (isAuthenticated && activeTab === 'attendance' && !historyLoaded) {
+    fetchAttendanceHistory();
+  }
+ 
+}, [isAuthenticated, activeTab]);
  
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
@@ -466,12 +477,40 @@ export default function App() {
       setIsLoggingOut(false);
     }
   };
- 
-  const handleCheckInToggle = () => {
-    setIsCheckedIn(!isCheckedIn);
-    alert(isCheckedIn ? "Checked out successfully!" : "Checked in successfully with Geofence verification!");
-  };
- 
+
+const fetchAttendanceHistory = async () => {
+  setHistoryLoading(true);
+  setHistoryError('');
+  try {
+    const data = await fetchMyHistoryApi(authHeaders());
+    setAttendanceHistory(data);
+    setHistoryLoaded(true);
+  } catch (err) {
+    console.error('Fetch attendance history error:', err);
+    setHistoryError(err.message || 'Failed to load attendance history');
+  } finally {
+    setHistoryLoading(false);
+  }
+};
+
+const handleCheckInToggle = async () => {
+  try {
+    if (!isCheckedIn) {
+      await checkInApi(authHeaders());
+      setIsCheckedIn(true);
+      pushToast('Checked in successfully!', 'success');
+    } else {
+      await checkOutApi(authHeaders());
+      setIsCheckedIn(false);
+      pushToast('Checked out successfully!', 'success');
+    }
+    fetchAttendanceHistory();
+  } catch (err) {
+    console.error('Attendance error:', err);
+    pushToast(err.message || 'Something went wrong. Please try again.', 'error');
+  }
+};
+  
   const handleAddLeave = (e) => {
     e.preventDefault();
     const req = {
@@ -572,9 +611,9 @@ export default function App() {
               setUserRole(fallbackRole);
             }
           } catch (profileErr) {
-            console.error("Profile fetch error after OTP:", profileErr);
-            setUserRole('supermanager');
-          }
+           console.error("Profile fetch error after OTP:", profileErr);
+           setUserRole('employee');
+           }
         }
  
         alert("OTP Verified Successfully!");
@@ -1096,11 +1135,11 @@ export default function App() {
  
         <div className="sidebar-footer">
           <div className="user-profile-card">
-            <div className="avatar-box">KK</div>
-            <div className="user-info-text">
-              <strong>Karina Katare</strong>
-              <span>Role: Supermanager</span>
-            </div>
+          <div className="avatar-box">{(userRole || 'U').slice(0, 2).toUpperCase()}</div>
+             <div className="user-info-text">
+             <strong>User</strong>
+             <span>Role: {userRole}</span>
+               </div>
           </div>
           <button className="exit-workspace-btn" onClick={handleLogout} disabled={isLoggingOut}>
             <LogOut size={16} /> {isLoggingOut ? 'Signing out...' : 'Exit Workspace'}
@@ -1120,11 +1159,12 @@ export default function App() {
           <div className="header-right-controls">
             <div className="role-context-dropdown">
               <span className="role-ctx-label">Role Context:</span>
-              <div className="dropdown-box">
-                <span>Super Manager / VP</span>
-                <ChevronDown size={14} color="#94a3b8" />
-              </div>
-            </div>
+             <div className="dropdown-box">
+           <span>{userRole}</span>
+           <ChevronDown size={14} color="#94a3b8" />
+          </div>
+     </div>
+ 
  
             <div className="notification-dot-btn">
               <Bell size={18} color="#cbd5e1" />
@@ -1144,7 +1184,7 @@ export default function App() {
               {/* HERO BANNER SUMMARY */}
               <div className="enterprise-summary-banner">
                 <div className="banner-left-info">
-                  <h2>Enterprise Workspace Summary (SUPERMANAGER)</h2>
+                 <h2>Enterprise Workspace Summary ({userRole?.toUpperCase()})</h2>
                   <p>All AI telemetry, geofence validations, and team activity are synced real-time.</p>
                 </div>
                 <div className="banner-status-indicator">
@@ -1292,6 +1332,7 @@ export default function App() {
                   <thead>
                 <tr>
                 <th>Date</th>
+          
                   {canViewAllRecords(userRole) && <th>Team Member</th>}
                   {canViewAllRecords(userRole) && <th>Role</th>}
                  <th>Check-in Time</th>
@@ -1300,24 +1341,47 @@ export default function App() {
                    </tr>
                  </thead>
                  <tbody>
-                    <tr>
-                    <td>2026-08-14</td>
-                   {canViewAllRecords(userRole) && (
-                   <td>
-                   <div className="user-cell">
-                    <div className="table-avatar">KK</div>
-                   <span>Karina Katare</span>
-                   </div>
-                    </td>
-                    )}
-                     {canViewAllRecords(userRole) && <td>Super Manager</td>}
-                      <td>09:14 AM</td>
-                      <td><MapPin size={12} color="#38bdf8" /> HQ - Sector 4</td>
-                      <td>
-                        <span className="status-badge success">On Time</span>
-                      </td>
-                    </tr>
-                  </tbody>
+  {historyLoading && (
+    <tr>
+      <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>Loading attendance history...</td>
+    </tr>
+  )}
+
+  {!historyLoading && historyError && (
+    <tr>
+      <td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#ef4444' }}>{historyError}</td>
+    </tr>
+  )}
+
+  {!historyLoading && !historyError && historyLoaded && attendanceHistory.length === 0 && (
+    <tr>
+      <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>No attendance records found.</td>
+    </tr>
+  )}
+
+  {!historyLoading && !historyError && attendanceHistory.map((record) => (
+    <tr key={record.id}>
+      <td>{record.attendanceDate}</td>
+      {canViewAllRecords(userRole) && (
+        <td>
+          <div className="user-cell">
+            <div className="table-avatar">ME</div>
+            <span>Me</span>
+          </div>
+        </td>
+      )}
+      {canViewAllRecords(userRole) && <td>{userRole}</td>}
+      <td>{record.checkInTime ? new Date(record.checkInTime).toLocaleTimeString() : '—'}</td>
+      <td><MapPin size={12} color="#38bdf8" /> {record.geodenceVerified ? 'Verified Location' : 'Unverified'}</td>
+      <td>
+        <span className={`status-badge ${record.status === 'PRESENT' ? 'success' : 'warning'}`}>
+          {record.status}
+        </span>
+      </td>
+  
+     </tr>
+      ))}
+     </tbody>
                 </table>
               </div>
             </div>
